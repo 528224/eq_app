@@ -1,125 +1,146 @@
+import 'package:country_code_picker/country_localizations.dart';
+import 'package:eq_app/request/fcm_request_actions_widget.dart';
+import 'package:eq_app/splashScreen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:get/get_navigation/src/root/get_material_app.dart';
+import 'package:get_storage/get_storage.dart';
 
+import 'FirebaseManager/UserManager.dart';
+import 'Login/new_login_screen.dart';
+import 'common/AppTheme.dart';
+import 'common/Constants.dart';
+import 'common/DataClasses.dart';
 import 'firebase_options.dart';
+import 'home/home_widget.dart';
 
-void main() async {
+User? currentFirebaseAuthUser;
+UserDetails? currentUserDetails;
+String? fcmToken;
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
   // Pass all uncaught errors from the framework to Crashlytics.
   FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+  await GetStorage.init();
+  currentFirebaseAuthUser = FirebaseAuth.instance.currentUser;
+
+  ///New logic
+  if (currentFirebaseAuthUser?.uid == null) {
+    await FirebaseAuth.instance.signInAnonymously();
+  }
+  var userUUID = GetStorage().read(userUUIDKey);
+  if (userUUID != null) {
+    currentUserDetails = await getUserDetailsForUUID(userUUID);
+  } else {
+    //await FirebaseAuth.instance.signInAnonymously();
+    currentUserDetails = null;
+  }
+
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   runApp(MyApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
-
+class MyApp extends StatefulWidget {
   // This widget is the root of your application.
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // Try running your application with "flutter run". You'll see the
-        // application has a blue toolbar. Then, without quitting the app, try
-        // changing the primarySwatch below to Colors.green and then invoke
-        // "hot reload" (press "r" in the console where you ran "flutter run",
-        // or simply save your changes to "hot reload" in a Flutter IDE).
-        // Notice that the counter didn't reset back to zero; the application
-        // is not restarted.
-        primarySwatch: Colors.blue,
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
-    );
-  }
+  _MyAppState createState() => _MyAppState();
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({Key? key, required this.title}) : super(key: key);
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class _MyAppState extends State<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+    _fcmSetUp();
+    _setUpTheme();
+    if (currentUserDetails?.phoneNo.isNotEmpty == true) {
+      _navigateToHome();
+    }
+  }
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
+  Widget build(BuildContext context) {
+    return GetMaterialApp(
+      supportedLocales: [
+        Locale("en"),
+      ],
+      localizationsDelegates: [
+        CountryLocalizations.delegate,
+      ],
+      debugShowCheckedModeBanner: false,
+      defaultTransition: Transition.leftToRightWithFade,
+      title: 'EQ App',
+      theme: AppThemes.lightThemeData,
+      darkTheme: AppThemes.darkThemeData,
+      home: (currentUserDetails?.phoneNo.isNotEmpty == true)
+          ? SplashScreen()
+          : NewLoginScreen(),
+    );
+  }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+  _navigateToHome() {
+    Future.delayed(Duration(milliseconds: 2000), () {
+      Get.offAll(() => HomeWidget());
     });
   }
 
-  @override
-  Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Invoke "debug painting" (press "p" in the console, choose the
-          // "Toggle Debug Paint" action from the Flutter Inspector in Android
-          // Studio, or the "Toggle Debug Paint" command in Visual Studio Code)
-          // to see the wireframe for each widget.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headline4,
-            ),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
-    );
+  _setUpTheme() {
+    final themeMode = (GetStorage().read(isDarkModeKey) ?? false)
+        ? ThemeMode.dark
+        : ThemeMode.light;
+    Get.changeThemeMode(themeMode);
   }
+
+  _fcmSetUp() async {
+    FirebaseMessaging messaging = FirebaseMessaging.instance;
+
+    NotificationSettings settings = await messaging.requestPermission(
+      alert: true,
+      announcement: false,
+      badge: true,
+      carPlay: false,
+      criticalAlert: false,
+      provisional: false,
+      sound: true,
+    );
+
+    print('User granted permission: ${settings.authorizationStatus}');
+
+    messaging.getToken().then((String? token) {
+      fcmToken = token;
+    });
+
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      Get.snackbar(message.data["title"], message.data["body"],
+          duration: Duration(seconds: 5),
+          mainButton: TextButton(
+              onPressed: () {
+                Get.to(() =>
+                    FCMRequestActionsWidget(message.data["requestDocumentId"]));
+              },
+              child: Text(message.data["body"])));
+    });
+
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      if (currentUserDetails != null) {
+        Get.to(
+            () => FCMRequestActionsWidget(message.data["requestDocumentId"]));
+      }
+    });
+  }
+}
+
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // If you're going to use other Firebase services in the background, such as Firestore,
+  // make sure you call `initializeApp` before using other Firebase services.
+  // await Firebase.initializeApp();
+
+  print("Handling a background message: ${message.messageId}");
 }
